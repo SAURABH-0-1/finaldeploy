@@ -252,6 +252,31 @@ class MarketIntelligenceService {
     
     return trends;
   }
+
+  async analyzePriceTrend(token: string): Promise<any> {
+    const analysis = await this.getMarketAnalysis();
+    return analysis.technicalSignals[token] || null;
+  }
+
+  async getMarketSentiment(): Promise<MarketSentiment> {
+    const analysis = await this.getMarketAnalysis();
+    return {
+      fearGreedIndex: analysis.sentiment.fearGreedIndex,
+      fearGreedLabel: analysis.sentiment.socialSentiment,
+      marketTrend: analysis.sentiment.overall as 'bullish' | 'bearish' | 'neutral'
+    };
+  }
+
+  async getComprehensiveAnalysis(token?: string): Promise<any> {
+    const analysis = await this.getMarketAnalysis();
+    if (token) {
+      return {
+        ...analysis,
+        tokenSpecific: analysis.technicalSignals[token] || null
+      };
+    }
+    return analysis;
+  }
 }
 
 export const marketIntelligence = MarketIntelligenceService.getInstance();
