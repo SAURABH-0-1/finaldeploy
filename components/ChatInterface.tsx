@@ -28,6 +28,9 @@ import { CustomScrollbar } from "@/components/custom-scrollbar"
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { WalletContextState } from "@solana/wallet-adapter-react"
 import { PublicKey } from '@solana/web3.js'
+import { aiModel } from '@/lib/services/ai-model-integration';
+import { aiDataService } from '@/lib/ai-data-service';
+import { knowledgeService } from '@/lib/services/knowledge-service'
 
 // SuggestionChip component for interactive suggestion buttons
 const SuggestionChip = ({ suggestion, onSelect }: { suggestion: string; onSelect: (s: string) => void }) => (
@@ -158,18 +161,14 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
-  // Add state for crypto market data
   const [marketData, setMarketData] = useState<CryptoMarketData[]>([])
   const [marketDataLoaded, setMarketDataLoaded] = useState(false)
   const [lastMarketUpdate, setLastMarketUpdate] = useState<Date | null>(null)
-  // New state variables to control scroll behavior
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [lastMessageCount, setLastMessageCount] = useState(messages.length)
-  // Add state for pending swap intent
   const [pendingSwapIntent, setPendingSwapIntent] = useState<any | null>(null)
   const [autoExecuteSwap, setAutoExecuteSwap] = useState<boolean>(false)
-  // Add these states if they don't already exist
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
   const [transferIntent, setTransferIntent] = useState<any>(null)
@@ -177,8 +176,9 @@ export function ChatInterface() {
   const [showTransactionConfirmation, setShowTransactionConfirmation] = useState(false)
   const [isExecutingTransfer, setIsExecutingTransfer] = useState(false)
   const [transaction, setTransaction] = useState<any>(null)
+  const [marketContext, setMarketContext] = useState<any>(null);
+  const [lastDataUpdate, setLastDataUpdate] = useState<Date | null>(null);
 
-  // Fetch crypto market data
   useEffect(() => {
     const fetchMarketData = async () => {
       try {
@@ -190,19 +190,15 @@ export function ChatInterface() {
         console.error("Error fetching market data:", error)
       }
     }
-    // Initial fetch
     fetchMarketData()
-    // Set up interval to refresh data
-    const intervalId = setInterval(fetchMarketData, 2 * 60 * 1000) // Every 2 minutes
+    const intervalId = setInterval(fetchMarketData, 2 * 60 * 1000)
     return () => {
       clearInterval(intervalId)
     }
   }, [])
 
-  // Update suggestions to include market-related questions once market data is loaded
   useEffect(() => {
     if (marketDataLoaded && !messages.some((m) => m.content.includes("cryptocurrency prices"))) {
-      // Add a subtle hint about crypto data capabilities after the welcome message
       setTimeout(() => {
         setMessages((prev) => [
           ...prev,
@@ -212,27 +208,24 @@ export function ChatInterface() {
               "I can also provide you with real-time cryptocurrency prices and market trends. Feel free to ask me about Bitcoin, Ethereum, or any other major cryptocurrency! You can even paste token contract addresses from Ethereum, BSC, or Solana to get detailed information.",
           },
         ])
-        // Update suggestions to include market-related queries
         setSuggestions([
           "What's the price of Bitcoin?",
           "How is the crypto market doing?",
           "Show me top performing coins",
-          "Analyze this: 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599", // Example WBTC address
+          "Analyze this: 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
         ])
       }, 1000)
     }
   }, [marketDataLoaded, messages])
 
-  // Determine if user is at bottom of chat
   const isNearBottom = useCallback(() => {
     const container = chatContainerRef.current
     if (!container) return true
 
-    const threshold = 100 // px from bottom to trigger auto-scroll
+    const threshold = 100
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold
   }, [])
 
-  // Scroll to bottom function
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({
@@ -242,7 +235,6 @@ export function ChatInterface() {
     }
   }, [])
 
-  // Handle scroll events to determine if we're near bottom
   useEffect(() => {
     const container = chatContainerRef.current
     if (!container) return
@@ -257,12 +249,8 @@ export function ChatInterface() {
     return () => container.removeEventListener("scroll", handleScroll)
   }, [isNearBottom, messages.length])
 
-  // Smart auto-scroll that respects user scrolling behavior
   useEffect(() => {
-    // Check if messages were added
     if (messages.length > lastMessageCount) {
-      // If user was previously at the bottom or this is AI response to user message
-      // (last two messages would be user then AI), auto scroll
       const isResponseToUserMessage =
         messages.length >= 2 &&
         messages[messages.length - 1].role === "assistant" &&
@@ -271,21 +259,17 @@ export function ChatInterface() {
       const shouldScroll = shouldAutoScroll || isResponseToUserMessage
 
       if (shouldScroll) {
-        // Use a small timeout to ensure the DOM has updated with new content
         setTimeout(() => {
           scrollToBottom(messages.length === 1 ? "auto" : "smooth")
         }, 100)
       } else {
-        // Show scroll button if we're not auto-scrolling
         setShowScrollButton(true)
       }
     }
 
-    // Update the message count
     setLastMessageCount(messages.length)
   }, [messages, lastMessageCount, shouldAutoScroll, scrollToBottom])
 
-  // Set wallet address when connected
   useEffect(() => {
     if (wallet.connected && wallet.publicKey) {
       const publicKey = wallet.publicKey;
@@ -293,11 +277,9 @@ export function ChatInterface() {
     }
   }, [wallet.publicKey, wallet.connected, setWalletAddress])
 
-  // Display welcome message when wallet is connected
   useEffect(() => {
     if (wallet.connected && wallet.publicKey) {
       const publicKey = wallet.publicKey;
-      // Only add welcome message if it doesn't exist yet
       if (!messages.some((m) => m.content.includes("wallet is connected"))) {
         setMessages((prev) => [
           ...prev,
@@ -308,7 +290,6 @@ export function ChatInterface() {
         ])
       }
 
-      // Set welcome message once data is loaded
       if (walletData.solBalance > 0 && !messages.some((m) => m.content.includes("wallet has")) && messages.length < 3) {
         setMessages((prev) => [
           ...prev,
@@ -321,7 +302,6 @@ export function ChatInterface() {
     }
   }, [wallet.connected, wallet.publicKey, walletData, messages])
 
-  // Auto-grow textarea as user types
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.style.height = "auto"
@@ -333,12 +313,10 @@ export function ChatInterface() {
     setInput(e.target.value)
   }
 
-  // Add a function to generate coin information responses
   const generateCoinInfoResponse = (symbol: string): string | null => {
     const coinInfo = getCoinInfo(symbol)
     if (!coinInfo) return null
 
-    // Find market data if available
     const marketInfo = marketData.find((coin) => coin.symbol.toUpperCase() === symbol.toUpperCase())
 
     let response = `## ${coinInfo.name} (${coinInfo.symbol})\n\n`
@@ -380,7 +358,6 @@ export function ChatInterface() {
     return response
   }
 
-  // Add a function to handle the test transfer of SOL with customizable amount
   const testTransfer = async () => {
     if (!wallet.connected || !wallet.publicKey) {
       console.error('Wallet not connected');
@@ -411,27 +388,38 @@ export function ChatInterface() {
       setInput("");
       setSuggestions([]);
 
-      // Check wallet connection status
-      if (!wallet?.connected || !wallet?.publicKey) {
-        const assistantMessage: AIMessage = {
-          role: "assistant",
-          content: "Please connect your wallet first to perform any transactions.",
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-        setIsProcessing(false);
-        return;
-      }
-
-      // Parse user intent with proper error handling
-      const intent = await parseUserIntent(input, {
-        walletConnected: wallet.connected,
-        walletAddress: wallet.publicKey?.toString() || "",
+      const context = {
+        walletConnected: wallet?.connected || false,
+        walletAddress: wallet?.publicKey?.toString() || "",
         balance: walletData.solBalance || 0,
         tokenBalances: walletData.tokens || [],
-      });
+        marketData: marketDataLoaded ? marketData : null,
+        lastMarketUpdate: lastMarketUpdate?.toISOString(),
+        expertiseLevel: determineUserExpertise(messages),
+        marketContext: await getMarketContext(),
+        previousInteractions: messages.slice(-5).map(m => ({
+          prompt: m.role === 'user' ? m.content : '',
+          response: m.role === 'assistant' ? m.content : ''
+        }))
+      };
 
-      // Handle the AI response with proper error handling
-      await handleAIResponse(intent);
+      const aiResponse = await aiModel.generateEnhancedResponse(input, context);
+
+      const assistantMessage: AIMessage = {
+        role: "assistant",
+        content: aiResponse.message
+      };
+      
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      if (aiResponse.suggestions?.length) {
+        setSuggestions(aiResponse.suggestions);
+      }
+
+      if (aiResponse.intent) {
+        await handleAIResponse(aiResponse.intent);
+      }
+
     } catch (error) {
       console.error("Error in handleSendMessage:", error);
       const errorMessage: AIMessage = {
@@ -442,6 +430,38 @@ export function ChatInterface() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const getMarketContext = async () => {
+    try {
+      const [marketData, sentiment] = await Promise.all([
+        aiDataService.getMarketData(['SOL', 'BONK', 'JUP', 'USDC']),
+        aiDataService.getMarketSentiment()
+      ]);
+      
+      return {
+        marketData,
+        sentiment,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Error fetching market context:', error);
+      return null;
+    }
+  };
+
+  const determineUserExpertise = (messages: AIMessage[]): 'beginner' | 'intermediate' | 'advanced' => {
+    const userMessages = messages.filter(m => m.role === 'user').map(m => m.content.toLowerCase());
+    
+    const advancedTerms = ['liquidity pool', 'impermanent loss', 'mev', 'yield farming', 'amm'];
+    const intermediateTerms = ['staking', 'defi', 'nft', 'market cap', 'swap'];
+    
+    const hasAdvancedTerms = userMessages.some(msg => advancedTerms.some(term => msg.includes(term)));
+    const hasIntermediateTerms = userMessages.some(msg => intermediateTerms.some(term => msg.includes(term)));
+    
+    if (hasAdvancedTerms) return 'advanced';
+    if (hasIntermediateTerms) return 'intermediate';
+    return 'beginner';
   };
 
   const handleAIResponse = async (intent: any) => {
@@ -466,7 +486,6 @@ export function ChatInterface() {
         setShowTransactionConfirmation(true);
       }
 
-      // Add the AI response to messages
       setMessages((prev) => [
         ...prev,
         {
@@ -535,7 +554,6 @@ export function ChatInterface() {
   };
 
   const handleSwapSuccess = (result: any) => {
-    // Add a system message about the successful swap
     const successMessage = {
       role: "system",
       content: `✅ ${result.message}`,
@@ -547,7 +565,6 @@ export function ChatInterface() {
   }
 
   const handleSwapError = (error: any) => {
-    // Add a system message about the failed swap
     const errorMessage = {
       role: "system",
       content: `❌ ${error.message || "Swap failed. Please try again."}`,
@@ -582,19 +599,16 @@ export function ChatInterface() {
     }
 
     setInput(suggestion)
-    // Focus and move cursor to end
     if (inputRef.current) {
       inputRef.current.focus()
       inputRef.current.setSelectionRange(suggestion.length, suggestion.length)
     }
-    // Set auto-scroll to true when user selects a suggestion
     setShouldAutoScroll(true)
   }
 
   return (
     <>
       <div className="rounded-xl border border-border/40 bg-card shadow-lg transition-all hover:shadow-xl hover:border-primary/20 overflow-hidden backdrop-blur-sm flex flex-col h-full">
-        {/* Chat header */}
         <div className="border-b border-border/40 p-4 flex items-center justify-between bg-card/80">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
@@ -636,13 +650,11 @@ export function ChatInterface() {
           </div>
         </div>
 
-        {/* Messages container with custom scrollbar */}
         <div className="relative">
           <div
             ref={chatContainerRef}
             className="flex-1 overflow-y-auto h-[calc(100vh-200px)]"
             style={{
-              // Always hide native scrollbar as we're always showing custom scrollbar
               overflowY: "hidden",
             }}
           >
@@ -650,7 +662,6 @@ export function ChatInterface() {
               {messages.map((message, index) => (
                 <ChatMessage key={index} message={message} isLast={index === messages.length - 1} />
               ))}
-              {/* Loading indicator */}
               {isProcessing && (
                 <div className="py-6 px-6 flex gap-4">
                   <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
@@ -663,16 +674,13 @@ export function ChatInterface() {
                   </div>
                 </div>
               )}
-              {/* Invisible element to scroll to */}
               <div ref={messagesEndRef} />
             </div>
           </div>
 
-          {/* Custom standalone scrollbar - always visible */}
           <CustomScrollbar containerRef={chatContainerRef} />
         </div>
 
-        {/* Input area */}
         <div className="p-4 border-t border-border/40 bg-card/80">
           <div className="relative flex items-end">
             <textarea
@@ -681,8 +689,6 @@ export function ChatInterface() {
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               onClick={() => {
-                // When user clicks input, we don't want to auto-scroll anymore
-                // if they've intentionally scrolled up to read history
                 if (!isNearBottom()) {
                   setShouldAutoScroll(false)
                 }
@@ -704,7 +710,6 @@ export function ChatInterface() {
           </div>
         </div>
 
-        {/* Add the swap executor component */}
         {pendingSwapIntent && (
           <SwapExecutor
             intent={pendingSwapIntent}
@@ -714,12 +719,10 @@ export function ChatInterface() {
           />
         )}
 
-        {/* Add the transfer executor component */}
         {transferIntent?.action === "transfer" && (
           <TransferExecutor
             intent={transferIntent}
             onSuccess={(result) => {
-              // Add a success message to the chat
               setMessages((prev) => [
                 ...prev,
                 {
@@ -730,10 +733,9 @@ export function ChatInterface() {
                 },
               ])
               setTransferIntent(null)
-              setAutoExecuteTransfer(false) // Reset auto-execute flag
+              setAutoExecuteTransfer(false)
             }}
             onError={(error) => {
-              // Add an error message to the chat
               setMessages((prev) => [
                 ...prev,
                 {
@@ -742,15 +744,13 @@ export function ChatInterface() {
                 },
               ])
               setTransferIntent(null)
-              setAutoExecuteTransfer(false) // Reset auto-execute flag
+              setAutoExecuteTransfer(false)
             }}
-            // Use the state to control auto-execution
             autoExecute={autoExecuteTransfer}
           />
         )}
       </div>
 
-      {/* Add confirmation modal */}
       <TransactionConfirmationModal
         isOpen={showTransactionConfirmation}
         onClose={() => setShowTransactionConfirmation(false)}
@@ -759,9 +759,7 @@ export function ChatInterface() {
         transaction={transaction}
       />
 
-      {/* Add custom CSS for animations */}
       <style jsx global>{`
-        /* Typing indicator animation */
         .typing-indicator {
           display: flex;
           align-items: center;
